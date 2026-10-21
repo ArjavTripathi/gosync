@@ -1,66 +1,37 @@
 package main
 
 import (
-	"errors"
+	"fileshare/internal/objstore"
+	"fileshare/internal/scan"
 	"fmt"
 	"os"
 )
 
-func HandleInit() {
-	folderName := os.Getenv("FOLDERNAME")
-
-	info, err := os.Stat(folderName)
-
-	if err == nil {
-		if info.IsDir() {
-			fmt.Print("already a sync directory! Perhaps you meant the sync command?")
-		} else {
-			fmt.Print("There is a file with the name .goSync in this directory! Please rename this before you can use sync!")
-		}
-	}
-
-	if errors.Is(err, os.ErrNotExist) {
-		if createSubDir(folderName) != nil {
-			return
-		}
-		detectFiles()
-	}
-}
-
-func createSubDir(folderName string) error {
-	err := os.MkdirAll(folderName, 0755)
-
+func HandleInit() error {
+	store, err := objstore.New(".")
 	if err != nil {
-		fmt.Printf("Failed to create directory: %v\n", err)
-		return err
+		return fmt.Errorf("Error creating directory %v\n", err)
 	}
-	return nil
+	fmt.Printf("store: %v\n", store)
 
-}
-
-func detectFiles() error {
-	files, err := os.ReadDir(".")
-
-	trackedFiles := files
-
+	scanned, err := scan.Scan(".")
 	if err != nil {
-		fmt.Printf("Failed to read directory: %v\n", err)
-		return err
+		return fmt.Errorf("Error scanning directory: %v\n", err)
 	}
 
-	for _, file := range trackedFiles {
-		if !file.IsDir() {
-			//trackedFiles = append(trackedFiles, os.ReadDir("./")) This is a graph problem do it later
-			f, _ := file.Info()
-			createBlob(f)
+	for _, file := range scanned {
+		f, err := os.Open(file)
+		if err != nil {
+			return fmt.Errorf("Error opening file: %s\n", file)
+		}
+		defer f.Close()
+
+		info, _ := f.Stat()
+		_, err = store.Put(f, info.Size())
+		if err != nil {
+			return fmt.Errorf("Error creating blob file: %s\n", file)
 		}
 	}
 
 	return nil
-}
-
-func createBlob(file os.FileInfo) error {
-	if file.IsDir() {
-		fmt.Printf("Cannot parse directories. Tried parsing: %s", file.Name())
-	}
 }

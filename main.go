@@ -15,7 +15,9 @@ func main() {
 
 	switch command {
 	case "init":
-		HandleInit()
+		if err := HandleInit(); err != nil {
+			fmt.Print(err)
+		}
 	default:
 		fmt.Printf("Unknown command: %s\n\n", command)
 		printUsage()
