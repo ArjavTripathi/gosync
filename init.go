@@ -1,37 +1,61 @@
 package main
 
 import (
+	"errors"
 	"fileshare/internal/objstore"
-	"fileshare/internal/scan"
-	"fmt"
+	"io"
+	"io/fs"
 	"os"
+	"path/filepath"
 )
 
-func HandleInit() error {
-	store, err := objstore.New(".")
-	if err != nil {
-		return fmt.Errorf("Error creating directory %v\n", err)
-	}
-	fmt.Printf("store: %v\n", store)
+func Init(root string, out io.Writer) error {
+	final := filepath.Join(root, ".gosync")
+	build := filepath.Join(root, ".gosync.tmp")
 
-	scanned, err := scan.Scan(".")
-	if err != nil {
-		return fmt.Errorf("Error scanning directory: %v\n", err)
+	// 1. already initialized?
+	if _, err := os.Stat(final); err == nil {
+		return ErrAlreadyInit
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
 	}
 
-	for _, file := range scanned {
-		f, err := os.Open(file)
-		if err != nil {
-			return fmt.Errorf("Error opening file: %s\n", file)
+	// 2. clear leftovers from a crashed init
+	if err := os.RemoveAll(build); err != nil {
+		return err
+	}
+
+	// 3. build everything inside build/
+	committed := false
+	defer func() {
+		if !committed {
+			os.RemoveAll(build)
 		}
-		defer f.Close()
+	}()
 
-		info, _ := f.Stat()
-		_, err = store.Put(f, info.Size())
-		if err != nil {
-			return fmt.Errorf("Error creating blob file: %s\n", file)
-		}
+	blobs, err := objstore.New(build, "blob", "objects")
+	if err != nil {
+		return err
+	}
+	trees, err := objstore.New(build, "tree", "trees")
+	if err != nil {
+		return err
 	}
 
+	rootHash, err := buildSnapshot(root, blobs, trees) // walk + Put + tree build
+	if err != nil {
+		return err
+	}
+
+	// HEAD, config, state: plain writes into build/ are fine
+	if err := os.WriteFile(filepath.Join(build, "HEAD"), []byte(rootHash+"\n"), 0o644); err != nil {
+		return err
+	}
+
+	// 4. commit point
+	if err := os.Rename(build, final); err != nil {
+		return err
+	}
+	committed = true
 	return nil
 }

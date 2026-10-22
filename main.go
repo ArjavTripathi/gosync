@@ -15,7 +15,7 @@ func main() {
 
 	switch command {
 	case "init":
-		if err := HandleInit(); err != nil {
+		if err := Init(); err != nil {
 			fmt.Print(err)
 		}
 	default:
