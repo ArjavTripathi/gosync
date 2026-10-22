@@ -1,7 +1,10 @@
 package scan
 
 import (
+	"bufio"
+	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -33,6 +36,14 @@ func Scan(root string) ([]string, error) {
 
 		name := d.Name()
 
+		if name == ".syncignore" {
+			err := scanSyncIgnore(path)
+			if err != nil {
+				return err
+			}
+			return nil
+		}
+
 		if name[0] == '.' ||
 			ignoreExact[name] ||
 			strings.HasPrefix(name, "~$") ||
@@ -46,4 +57,24 @@ func Scan(root string) ([]string, error) {
 	})
 
 	return filePaths, err
+}
+
+func scanSyncIgnore(path string) error {
+	b, err := os.Open(path)
+
+	if err != nil {
+		return fmt.Errorf("Cant read syncfile: %v\n", err)
+	}
+
+	scanner := bufio.NewScanner(b)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		ignoreExact[line] = true
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("Error reading syncfile with scanner: %v\n", err)
+	}
+	return nil
 }

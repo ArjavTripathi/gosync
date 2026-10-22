@@ -63,7 +63,7 @@ func (s *Store) Put(r io.Reader, size int64) (string, error) {
 	dst := filepath.Join(s.objDir, addr[:2], addr[2:])
 	if _, err := os.Stat(dst); err == nil {
 		return addr, nil
-	} // dedup
+	}
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return "", err
 	}
@@ -71,4 +71,32 @@ func (s *Store) Put(r io.Reader, size int64) (string, error) {
 		return "", err
 	}
 	return addr, os.Chmod(dst, 0o444)
+}
+
+func Get(hash string) (io.ReadCloser, error) {
+	path := filepath.Join(".", foldername, "objects", hash[:2], hash[2:])
+
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("Error opening file using Get: %v\n", err)
+	}
+
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return nil, fmt.Errorf("Error creating gzip reader for file: %v\n", err)
+	}
+	defer gz.Close()
+
+	return gz, nil
+}
+
+func Has(hash string) bool {
+	path := filepath.Join(".", foldername, "objects", hash[:2], hash[2:])
+	_, err := os.Stat(path)
+
+	if err != nil {
+		return false
+	}
+
+	return true
 }
