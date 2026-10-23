@@ -5,6 +5,8 @@ import (
 	"os"
 )
 
+var root = "."
+
 func main() {
 	if len(os.Args) < 2 {
 		printUsage()
@@ -15,7 +17,7 @@ func main() {
 
 	switch command {
 	case "init":
-		if err := Init(); err != nil {
+		if err := Init(root); err != nil {
 			fmt.Print(err)
 		}
 	default:

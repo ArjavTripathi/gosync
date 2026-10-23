@@ -2,30 +2,27 @@ package main
 
 import (
 	"errors"
-	"fileshare/internal/objstore"
-	"io"
+	"fileshare/src/internal/objstore"
+	"fileshare/src/internal/scan"
 	"io/fs"
 	"os"
 	"path/filepath"
 )
 
-func Init(root string, out io.Writer) error {
+func Init(root string) error {
 	final := filepath.Join(root, ".gosync")
 	build := filepath.Join(root, ".gosync.tmp")
 
-	// 1. already initialized?
 	if _, err := os.Stat(final); err == nil {
 		return ErrAlreadyInit
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 
-	// 2. clear leftovers from a crashed init
 	if err := os.RemoveAll(build); err != nil {
 		return err
 	}
 
-	// 3. build everything inside build/
 	committed := false
 	defer func() {
 		if !committed {
@@ -42,20 +39,48 @@ func Init(root string, out io.Writer) error {
 		return err
 	}
 
-	rootHash, err := buildSnapshot(root, blobs, trees) // walk + Put + tree build
+	rootHash, err := buildSnapshot(root, blobs, trees)
 	if err != nil {
 		return err
 	}
 
-	// HEAD, config, state: plain writes into build/ are fine
 	if err := os.WriteFile(filepath.Join(build, "HEAD"), []byte(rootHash+"\n"), 0o644); err != nil {
 		return err
 	}
 
-	// 4. commit point
 	if err := os.Rename(build, final); err != nil {
 		return err
 	}
 	committed = true
 	return nil
+}
+
+func buildSnapshot(root string, blobs *objstore.Store, trees *objstore.Store) (string, error) {
+	// 1 - Scan files and create blobs
+
+	files, err := scan.Scan(root)
+	if err != nil {
+		return "", err
+	}
+
+	addrlist := make([]string, len(files))
+
+	for _, file := range files {
+		f, err := os.Open(file)
+		if err != nil {
+			return "", err
+		}
+		info, err := f.Stat()
+		if err != nil {
+			return "", err
+		}
+		addr, err := blobs.Put(f, info.Size())
+		if err != nil {
+			return "", err
+		}
+		addrlist = append(addrlist, addr)
+	} // First one should be root
+
+	// 2 - Create tree and store
+	// 3 - Return root node hash
 }

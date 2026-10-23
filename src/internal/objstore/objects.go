@@ -39,7 +39,7 @@ func (s *Store) objPath(hash string) (string, error) {
 }
 
 type gzFile struct {
-	*gzip.Reader
+	gzip.Reader
 	f *os.File
 }
 
